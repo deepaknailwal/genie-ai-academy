@@ -256,8 +256,49 @@ async function callGemini(opts: {
   });
 
   if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Gemini API ${res.status}: ${errText.slice(0, 200)}`);
+    let errorPayload: unknown = null;
+
+    try {
+      errorPayload = await res.json();
+    } catch {
+      errorPayload = await res.text();
+    }
+
+    const errorObject =
+      errorPayload && typeof errorPayload === "object" && "error" in errorPayload
+        ? (errorPayload as {
+            error?: {
+              message?: string;
+              details?: Array<{ retryDelay?: string }>;
+            };
+          }).error
+        : undefined;
+
+    const apiMessage = errorObject?.message?.trim();
+    const retryDelay = errorObject?.details?.find((detail) => detail?.retryDelay)?.retryDelay;
+
+    if (res.status === 429) {
+      const hasNoQuota = apiMessage?.includes("limit: 0") || apiMessage?.includes("quota");
+      const retryNote = retryDelay
+        ? ` Try again in about ${retryDelay.replace(/s$/, " seconds")}.`
+        : " Please wait a little and try again.";
+
+      throw new Error(
+        hasNoQuota
+          ? `This Gemini API key has no available quota right now.${retryNote} If it keeps happening, use a different key or enable billing/quota for that Google AI project.`
+          : `Gemini is rate-limiting requests right now.${retryNote}`
+      );
+    }
+
+    if (res.status === 400) {
+      throw new Error("Gemini rejected this request. Please check the model name and your API key settings.");
+    }
+
+    if (res.status === 401 || res.status === 403) {
+      throw new Error("Gemini could not use this API key. Please check that the key is valid and allowed to call the Gemini API.");
+    }
+
+    throw new Error(apiMessage ? `Gemini API ${res.status}: ${apiMessage}` : `Gemini API ${res.status}`);
   }
 
   const data = await res.json();
