@@ -238,7 +238,7 @@ async function callGemini(opts: {
   userMessage: string;
   model?: string;
 }) {
-  const model = opts.model || "gemini-1.5-flash-latest";
+  const model = opts.model || "gemini-2.0-flash";
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(
     opts.apiKey
   )}`;
